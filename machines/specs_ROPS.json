@@ -1,0 +1,113 @@
+{
+	"name": "ROPS",
+	"author": "Ernesto Del Prete (e.delprete@inail.it)",
+	"version": "0.9.3",
+	"description": "Macchina a stati finiti per ROPS con sensori di fine corsa e sblocco",
+	"outdir": "out/ROPS",
+	"inputs": [
+			{ "name":    "su", "values": [ "0", "1" ], "pin":    6 },
+			{ "name":   "giu", "values": [ "0", "1" ], "pin":    4 },
+			{ "name":   "sb1", "values": [ "0", "1" ], "pin":    5 },
+			{ "name":   "sb2", "values": [ "0", "1" ], "pin":    7 },
+			{ "name":    "ps", "values": [ "0", "1" ], "pin":    2 },
+			{ "name":    "pa", "values": [ "0", "1" ], "pin":    3 },
+			{ "name": "timer", "values": [ "0", "1" ], "pin": null }
+		],
+	"outputs": [
+			{ "name":  "o1", "values": [    "MOTORE_SU",   "MOTORE_GIU",   "OFF" ] },
+			{ "name":  "o2", "values": [       "BLOCCO",      "SBLOCCO", "BSOFF" ] },
+			{ "name": "err", "values": [   "ERRORE_BLK",  "ERRORE_SBLK",
+							"ERRORE_FC",
+						      "TIMEOUT_BLK", "TIMEOUT_SBLK",
+						       "TIMEOUT_SU",  "TIMEOUT_GIU",
+						     "ERR_GENERICO" ] }
+		],
+	"definitions": [
+			{ "name": "PIN_RELE_ROPS_1",  "value": "12"                               },
+			{ "name": "PIN_RELE_ROPS_2",  "value": "14"                               },
+			{ "name": "PIN_RELE_SERR_11", "value":  "8"                               },
+			{ "name": "PIN_RELE_SERR_12", "value":  "9"                               },
+			{ "name": "PIN_RELE_SERR_21", "value": "10"                               },
+			{ "name": "PIN_RELE_SERR_22", "value": "11"                               },
+			{ "name": "TIMER_SALITA",     "value": "20", "comment": "in secondi"      },
+			{ "name": "TIMER_DISCESA",    "value": "20", "comment": "in secondi"      },
+			{ "name": "TIMER_BLOCCO",     "value": "10", "comment": "in secondi"      },
+			{ "name": "TIMER_SBLOCCO",    "value": "10", "comment": "in secondi"      },
+			{ "name": "DELAY_FOR_RELAIS", "value": "10", "comment": "in millisecondi" }
+		],
+	"failure_state": "ERR_GEN",
+	"transitions": {
+		"START": [
+				{ "input": [  "0",  "0", null, null,  "0",  "0", null ], "state":     "START", "output": [         null,      null,           null ] },
+				{ "input": [  "0",  "0", null, null,  "1",  "1", null ], "state":     "START", "output": [         null,      null,           null ] },
+				{ "input": [  "0",  "0", null, null,  "0",  "1", null ], "state":       "GIU", "output": [ "MOTORE_GIU",      null,           null ] },
+				{ "input": [  "0",  "0", null, null,  "1",  "0", null ], "state":        "SU", "output": [  "MOTORE_SU",      null,           null ] },
+				{ "input": [  "0",  "1", null, null, null, null, null ], "state":     "F_GIU", "output": [         null,      null,           null ] },
+				{ "input": [  "1",  "0", null, null, null, null, null ], "state":       "BLK", "output": [         null,  "BLOCCO",           null ] },
+				{ "input": [  "1",  "1", null, null, null, null, null ], "state":       "ERR", "output": [         null,      null,    "ERRORE_FC" ] }
+			],
+		"BLK": [
+				{ "input": [  "1",  "0",  "0",  "0", null, null,  "1" ], "state":      "F_SU", "output": [         null,   "BSOFF",           null ] },
+				{ "input": [  "1",  "0", null, null, null, null,  "0" ], "state":       "BLK", "output": [         null,      null,           null ] },
+				{ "input": [ null, null,  "0",  "1", null, null,  "1" ], "state":       "ERR", "output": [         null,   "BSOFF",  "TIMEOUT_BLK" ] },
+				{ "input": [ null, null,  "1", null, null, null,  "1" ], "state":       "ERR", "output": [         null,   "BSOFF",  "TIMEOUT_BLK" ] },
+				{ "input": [  "0", null,  "0",  "0", null, null,  "1" ], "state":       "ERR", "output": [         null,   "BSOFF",    "ERRORE_FC" ] },
+				{ "input": [  "1",  "1",  "0",  "0", null, null,  "1" ], "state":       "ERR", "output": [         null,   "BSOFF",    "ERRORE_FC" ] },
+				{ "input": [  "0", null, null, null, null, null,  "0" ], "state":       "ERR", "output": [         null,   "BSOFF",    "ERRORE_FC" ] },
+				{ "input": [  "1",  "1", null, null, null, null,  "0" ], "state":       "ERR", "output": [         null,   "BSOFF",    "ERRORE_FC" ] }
+			],
+		"F_SU": [
+				{ "input": [  "1",  "0",  "0",  "0",  "0",  "0", null ], "state":      "F_SU", "output": [         null,      null,           null ] },
+				{ "input": [  "1",  "0",  "0",  "0",  "1", null, null ], "state":      "F_SU", "output": [         null,      null,           null ] },
+				{ "input": [  "1",  "0",  "0",  "0",  "0",  "1", null ], "state":      "SBLK", "output": [         null, "SBLOCCO",           null ] },
+				{ "input": [  "0", null, null, null, null, null, null ], "state":       "ERR", "output": [         null,      null,    "ERRORE_FC" ] },
+				{ "input": [  "1",  "1", null, null, null, null, null ], "state":       "ERR", "output": [         null,      null,    "ERRORE_FC" ] },
+				{ "input": [  "1",  "0",  "1", null, null, null, null ], "state":       "ERR", "output": [         null,      null,   "ERRORE_BLK" ] },
+				{ "input": [  "1",  "0",  "0",  "1", null, null, null ], "state":       "ERR", "output": [         null,      null,   "ERRORE_BLK" ] }
+			],
+		"F_GIU": [
+				{ "input": [  "0",  "1", null, null,  "0", null, null ], "state":     "F_GIU", "output": [         null,      null,           null ] },
+				{ "input": [  "0",  "1", null, null,  "1",  "1", null ], "state":     "F_GIU", "output": [         null,      null,           null ] },
+				{ "input": [  "0",  "1", null, null,  "1",  "0", null ], "state":        "SU", "output": [  "MOTORE_SU",      null,           null ] },
+				{ "input": [  "0",  "0", null, null, null, null, null ], "state":       "ERR", "output": [         null,      null,    "ERRORE_FC" ] },
+				{ "input": [  "1", null, null, null, null, null, null ], "state":       "ERR", "output": [         null,      null,    "ERRORE_FC" ] }
+			],
+		"SU": [
+				{ "input": [  "0", null, null, null,  "0",  "0",  "0" ], "state":        "SU", "output": [         null,      null,           null ] },
+				{ "input": [  "0", null, null, null,  "1", null,  "0" ], "state":        "SU", "output": [         null,      null,           null ] },
+				{ "input": [  "0",  "0", null, null,  "0",  "1",  "0" ], "state":       "GIU", "output": [ "MOTORE_GIU",      null,           null ] },
+				{ "input": [  "0",  "1", null, null,  "0",  "1",  "0" ], "state":     "F_GIU", "output": [        "OFF",      null,           null ] },
+				{ "input": [  "1",  "0", null, null, null, null,  "0" ], "state":       "BLK", "output": [        "OFF",  "BLOCCO",           null ] },
+				{ "input": [ null, null, null, null, null, null,  "1" ], "state":       "ERR", "output": [        "OFF",      null,   "TIMEOUT_SU" ] },
+				{ "input": [  "1",  "1", null, null, null, null,  "0" ], "state":       "ERR", "output": [        "OFF",      null,    "ERRORE_FC" ] }
+			],
+		"GIU": [
+				{ "input": [ null,  "0", null, null,  "0", null,  "0" ], "state":       "GIU", "output": [         null,      null,           null ] },
+				{ "input": [ null,  "0", null, null,  "1",  "1",  "0" ], "state":       "GIU", "output": [         null,      null,           null ] },
+				{ "input": [  "0", null, null, null,  "1",  "0",  "0" ], "state":        "SU", "output": [  "MOTORE_SU",      null,           null ] },
+				{ "input": [  "0",  "1", null, null,  "0", null,  "0" ], "state":     "F_GIU", "output": [        "OFF",      null,           null ] },
+				{ "input": [  "0",  "1", null, null,  "1",  "1",  "0" ], "state":     "F_GIU", "output": [        "OFF",      null,           null ] },
+				{ "input": [  "1",  "0", null, null,  "1",  "0",  "0" ], "state":       "BLK", "output": [        "OFF",  "BLOCCO",           null ] },
+				{ "input": [  "1",  "1", null, null, null, null,  "0" ], "state":       "ERR", "output": [         null,      null,    "ERRORE_FC" ] },
+				{ "input": [ null, null, null, null, null, null,  "1" ], "state":       "ERR", "output": [        "OFF",      null,  "TIMEOUT_GIU" ] }
+			],
+		"SBLK": [
+				{ "input": [  "0", null, null, null, null, null, null ], "state":       "ERR", "output": [         null,   "BSOFF",    "ERRORE_FC" ] },
+				{ "input": [  "1",  "1", null, null, null, null, null ], "state":       "ERR", "output": [         null,   "BSOFF",    "ERRORE_FC" ] },
+				{ "input": [  "1",  "0",  "0", null, null, null,  "0" ], "state":      "SBLK", "output": [         null,      null,           null ] },
+				{ "input": [  "1",  "0",  "1",  "0", null, null,  "0" ], "state":      "SBLK", "output": [         null,      null,           null ] },
+				{ "input": [  "1",  "0",  "1",  "1", null, null, null ], "state":       "GIU", "output": [ "MOTORE_GIU",   "BSOFF",           null ] },
+				{ "input": [  "1",  "0",  "0", null, null, null,  "1" ], "state":       "ERR", "output": [         null,   "BSOFF", "TIMEOUT_SBLK" ] },
+				{ "input": [  "1",  "0",  "1",  "0", null, null,  "1" ], "state":       "ERR", "output": [         null,   "BSOFF", "TIMEOUT_SBLK" ] }
+			],
+		"ERR_GEN": [
+				{ "input": [ null, null, null, null, null, null, null ], "state":       "END", "output": [        "OFF",   "BSOFF", "ERR_GENERICO" ] }
+			],
+		"ERR": [
+				{ "input": [ null, null, null, null, null, null, null ], "state":       "END", "output": [        "OFF",   "BSOFF",           null ] }
+			],
+		"END": [
+				{ "input": [ null, null, null, null, null, null, null ], "state":       "END", "output": [         null,      null,           null ] }
+			]
+	}
+}

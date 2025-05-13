@@ -1,0 +1,8 @@
+#!/bin/sh
+
+FILE=$1
+
+stato_iniziale=$2
+stato_finale=$3
+
+jq -r '.transitions.'${stato_iniziale}'[] | select(.state=="'${stato_finale}'") | .input' ${FILE}

@@ -1,0 +1,244 @@
+#!/bin/bash
+
+output_dir=$1
+specs_file=$2
+
+version=`jq -j -r '.name + "-v" + .version' ${specs_file}; echo -n ":"; date +%F`
+
+ingressi=(`jq -r '.inputs[].name' ${specs_file}`)
+uscite=(`jq -r '.outputs[].name' ${specs_file}`)
+
+definitions=(`jq -r '.definitions[].name' ${specs_file}`)
+stati=(`jq -r '.transitions | keys_unsorted | . []' ${specs_file}`)
+definizioni=""
+script=""
+failure_state=`jq -r '.failure_state' ${specs_file}`
+errori=(`jq -r '.outputs[2].values[]' ${specs_file}`)
+
+script="define(\`fsm_version', \`\"${version}\"')dnl"
+script="${script}\ndefine(\`fsm_comment_version', \`/* VERSION: ${version} */')dnl"
+
+# generazione delle signatures
+script="${script}\ndefine(\`fsm_signature', \`"
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}int ${ingressi[$i]}, "
+done
+script="${script}int ${ingressi[$i]}')dnl"
+
+script="${script}\ndefine(\`fsm_signature_check', \`"
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}int a_${ingressi[$i]}, "
+done
+script="${script}int a_${ingressi[$i]}')dnl"
+
+script="${script}\ndefine(\`fsm_parameters', \`"
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}${ingressi[$i]}, "
+done
+script="${script}${ingressi[$i]}')dnl"
+
+script="${script}\ndefine(\`fsm_ingressi_format', \`\""
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}${ingressi[$i]}: %d, "
+done
+script="${script}${ingressi[$i]}: %d\"')dnl"
+
+script="${script}\ndefine(\`fsm_ingressi_inizializzazione', \`"
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}${ingressi[$i]} = "
+done
+script="${script}${ingressi[$i]} = 0;')dnl"
+
+script="${script}\ndefine(\`fsm_set_ingressi', \`if (strcmp(arg, \"${ingressi[0]}\") == 0) {\n\t\t${ingressi[0]} = 1;"
+for ((i = 1; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}\n\t} else if (strcmp(arg, \"${ingressi[$i]}\") == 0) {\n\t\t${ingressi[$i]} = 1;"
+done
+script="${script}')dnl"
+
+script="${script}\ndefine(\`fsm_unset_ingressi', \`if (strcmp(arg, \"${ingressi[0]}\") == 0) {\n\t\t${ingressi[0]} = 0;"
+for ((i = 1; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}\n\t} else if (strcmp(arg, \"${ingressi[$i]}\") == 0) {\n\t\t${ingressi[$i]} = 0;"
+done
+script="${script}')dnl"
+
+script="${script}\ndefine(\`fsm_digitalRead', \`"
+for ((i = 0; i < ${#ingressi[@]} - 2; i++)); do
+	var="${ingressi[$i]}"
+	script="${script}\t\tcase PIN_${var^^}:\n\t\t\treturn ${var};\n\t\t\tbreak;\n"
+done
+var="${ingressi[$i]}"
+script="${script}\t\tcase PIN_${var^^}:\n\t\t\treturn ${var};\n\t\t\tbreak;')dnl"
+
+# pin di input
+script="${script}\ndefine(\`fsm_pins', \`"
+for ((i = 0; i < ${#ingressi[@]}; i++)); do
+	var=`jq -r '.inputs['$i'].name' ${specs_file}`
+	pin=`jq -r '.inputs['$i'].pin' ${specs_file}`
+	if [ "x${pin}" != "xnull" ]; then
+		script="${script}#define PIN_${var^^} ${pin}\n"
+	fi
+done
+var=`expr ${#ingressi[@]} - 1`
+script="${script}\n#define NUM_INPUTS ${var}')dnl"
+
+# uscite
+script="${script}\ndefine(\`fsm_outputs', \`"
+for ((i = 0; i < ${#uscite[@]}; i++)); do
+	values=(`jq -r '.outputs[] | select(.name=="'${uscite[$i]}'") | .values[]'  ${specs_file}`)
+	for ((j = 0; j < ${#values[@]}; j++)); do
+		script="${script}\n#define ${values[$j]} $j"
+	done
+done
+script="${script}')dnl"
+
+# uscite stringhe
+script="${script}\ndefine(\`fsm_outputs_strings', \`"
+for ((i = 0; i < ${#uscite[@]}; i++)); do
+	script="${script}\nstatic const char *output_${uscite[$i]}[] = {"
+	values=(`jq -r '.outputs[] | select(.name=="'${uscite[$i]}'") | .values[]'  ${specs_file}`)
+	for ((j = 0; j < ${#values[@]}; j++)); do
+		script="${script}\"${values[$j]}\","
+	done
+	script="${script}};"
+done
+script="${script}')dnl"
+
+# definitions
+script="${script}\ndefine(\`fsm_definitions', \`"
+for ((i = 0; i < ${#definitions[@]}; i++)); do
+	name=`jq -r '.definitions['$i'].name' ${specs_file}`
+	value=`jq -r '.definitions['$i'].value' ${specs_file}`
+	script="${script}#define ${name} ${value}\n"
+done
+script="${script}')dnl"
+
+script="${script}\ndefine(\`fsm_test_ingressi', \`int *ingressi[] = {"
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}&${ingressi[$i]}, "
+done
+script="${script}&${ingressi[$i]}};')dnl"
+
+fsm="digraph fsm {\n\tlabel=\"ingressi: ${ingressi[@]}\""
+
+# legge le specifiche e crea le definizioni delle funzioni
+for ((i = 0; i < ${#stati[@]}; i++)); do
+	declare -A fsm_stati
+	declare -A fsm_uscite
+	stato=${stati[$i]}
+	definizioni="${definizioni}static t_stato f_${stato}(fsm_signature)\n{\n"
+	len=`jq -r '.transitions.'${stato}' | length' ${specs_file}`
+	for ((j = 0; j < ${len}; j++)); do
+		input_values=(`jq -r '.transitions.'${stato}'['$j'].input[]' ${specs_file}`)
+		state_value=`jq -r '.transitions.'${stato}'['$j'].state' ${specs_file}`
+		output_values=(`jq -r '.transitions.'${stato}'['$j'].output[]' ${specs_file}`)
+		val_in=`echo "${input_values[@]}" |  sed -e 's/null/2/g' | sed -e 's/\([012]\)/  \1,/g' | sed -e 's/ 2/-1/g' | sed -e 's/,$//g'`
+		val_out=`echo "${output_values[@]}" | sed -e 's/ /, /g' | sed -e 's/null/-1/g' | sed -e 's/,$//g'`
+		definizioni="${definizioni}\tif (CHECK(${val_in}) == 1) {"
+		definizioni="${definizioni}\n\t\tset_outputs(${val_out});"
+		definizioni="${definizioni}\n\t\treturn S_${state_value};\n\t}\n"
+		fsm_uscite[${state_value}]="${output_values[@]}"
+		if [ "x${fsm_stati[${state_value}]}" == "x" ]; then
+			fsm_stati[${state_value}]="${input_values[@]}"
+		else
+			fsm_stati[${state_value}]="${fsm_stati[${state_value}]} | ${input_values[@]}"
+		fi
+	done
+	definizioni="${definizioni}\treturn S_${failure_state};\n}\n\n"
+	for st in ${!fsm_stati[@]}; do
+		fsm="${fsm}\n\t${stato} -> ${st} [label=\"${fsm_stati[${st}]} ; ${fsm_uscite[${st}]}\"]"
+	done
+	unset fsm_stati
+	unset fsm_uscite
+done
+fsm="${fsm}\n}"
+
+script="${script}\ndefine(\`fsm_num_stati', \`${#stati[@]}')dnl"
+
+# genera i case degli errori sulla set_outputs
+script="${script}\ndefine(\`fsm_case_errori', \`"
+for ((i = 0; i < ${#errori[@]}; i++)); do
+	script="${script}\n\t\tcase ${errori[$i]}:"
+done
+script="${script}')dnl"
+
+# genera la macro CHECK
+script="${script}\ndefine(\`fsm_macro_check', \`#define CHECK("
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}a_${ingressi[$i]}, "
+done
+script="${script}a_${ingressi[$i]}) check("
+for ((i = 0; i < ${#ingressi[@]}; i++)); do
+	script="${script}${ingressi[$i]}, "
+done
+for ((i = 0; i < ${#ingressi[@]} - 1; i++)); do
+	script="${script}(a_${ingressi[$i]}), "
+done
+script="${script}(a_${ingressi[$i]}))')dnl"
+
+# genera le dichiarazioni
+script="${script}\ndefine(\`fsm_dichiarazioni', \`static t_stato f_${stati[0]}(fsm_signature);"
+for ((i = 1; i < ${#stati[@]}; i++ )); do
+	script="${script}\nstatic t_stato f_${stati[$i]}(fsm_signature);"
+done
+script="${script}\n\nstatic int check(fsm_signature, fsm_signature_check);"
+script="${script}\nt_stato evolve(t_stato stato, fsm_signature);')dnl"
+
+# genera le variabili globali
+enum="typedef enum {S_UNKNOWN = -1, "
+nome="const char *nome_stato[] = {"
+transizione="t_stato (*transizione[])(fsm_signature) = {"
+for ((i = 0; i < ${#stati[@]} - 1; i++ )); do
+	enum="${enum}S_${stati[$i]}, "
+	nome="${nome}\"${stati[$i]}\", "
+	transizione="${transizione}f_${stati[$i]}, "
+done
+enum="${enum}S_${stati[$i]}} t_stato;"
+nome="${nome}\"${stati[$i]}\"};"
+transizione="${transizione}f_${stati[$i]}};"
+
+script="${script}\ndefine(\`fsm_tipo_stato', \`${enum}')dnl"
+
+script="${script}\ndefine(\`fsm_stati', \`${nome}\n${transizione}')dnl"
+
+var="${ingressi[0]}"
+script="${script}\ndefine(\`fsm_init_pin', \`pinMode(PIN_${var^^}, INPUT);"
+for ((i = 1; i < ${#ingressi[@]} - 1; i++)); do
+	var="${ingressi[$i]}"
+	script="${script}\n\tpinMode(PIN_${var^^}, INPUT);"
+done
+script="${script}')dnl"
+
+var="${ingressi[0]}"
+script="${script}\ndefine(\`fsm_leggi_pin', \`${ingressi[0]} = digitalRead(PIN_${var^^});"
+for ((i = 1; i < ${#ingressi[@]} - 2; i++)); do
+	var="${ingressi[$i]}"
+	script="${script}\n\t${ingressi[$i]} = digitalRead(PIN_${var^^});"
+done
+var="${ingressi[$i]}"
+script="${script}\n\t${ingressi[$i]} = digitalRead(PIN_${var^^});')dnl"
+
+# genera la definizione di evolve
+definizioni="${definizioni}t_stato evolve(t_stato stato, fsm_signature)\n{\n\tswitch(stato) {\n"
+for s in ${stati[@]}; do
+	definizioni="${definizioni}\t\tcase S_$s:\n"
+done
+definizioni="${definizioni}\t\t\treturn transizione[stato](fsm_parameters);\n\t\t\tbreak;\n\t\tdefault:\n\t\t\tprint_message(\"stato sconosciuto: %d\", stato);\n\t\t\tbreak;\n\t}\n\treturn S_UNKNOWN;\n}\n"
+
+# genera la definizione di check
+definizioni="${definizioni}\nstatic int check(fsm_signature, fsm_signature_check)\n{\n"
+for i in ${ingressi[@]}; do
+	definizioni="${definizioni}\tCHECK_INPUT($i)\n"
+done
+definizioni="${definizioni}\treturn 1;\n}\n"
+
+script="${script}\ndefine(\`fsm_definizioni', \`\n${definizioni}')dnl"
+
+# genera gli ingressi per il test
+v="echo "
+for ((i = 0; i < ${#ingressi[@]}; i++)); do
+	v="${v}{0..1}"
+done
+
+eval $v | sed -e 's/ /\n/g' > ${output_dir}/ingressi
+echo -e -n "${script}"      > ${output_dir}/script.m4
+echo -e -n "${fsm}"         > ${output_dir}/fsm.dot

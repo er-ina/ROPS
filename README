@@ -1,0 +1,13 @@
+Progetto ROPS
+
+Per creare le macchine a stati eseguire:
+
+./genera.sh machines/specs_ROPS.sh     --- genera la macchina a stati con ingressi ridotti per ROPS nuovo
+./genera.sh machines/specs_QROPS.sh    --- genera la macchina a stati con ingressi ridotti per QROPS
+./genera.sh machines/specs_completa.sh --- genera la macchina a stati con gli ingressi dei sensori di blocco e di sovraccarico
+
+oppure eseguire:
+
+./gen_all.sh
+
+per generare il codice di tutte le macchine in machines.

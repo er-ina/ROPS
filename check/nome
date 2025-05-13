@@ -1,0 +1,5 @@
+#!/bin/sh
+
+FILE=$1
+
+jq -r '.name' ${FILE}

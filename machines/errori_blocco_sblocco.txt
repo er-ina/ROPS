@@ -1,0 +1,46 @@
+gestione sblocco/sblocco
+b1, b2, sb1, sb2
+
+errore
+
+01-1
+1-1-
+1101
+
+movimento
+
+-00-
+0010
+01-0
+
+in bloccaggio
+
+00--
+01-0
+100-
+1100	bloccato (finale)
+
+in sbloccaggio
+
+-00-
+0-10
+-100
+0011	sbloccato (finale)
+
+
+0000	in movimento
+0001	in movimento
+0010	in movimento
+0011	sbloccato
+0100	in movimento
+0101 -
+0110	in movimento
+0111 -
+1000	in movimento
+1001	in movimento
+1010 -
+1011 -
+1100	bloccato
+1101 -
+1110 -
+1111 -

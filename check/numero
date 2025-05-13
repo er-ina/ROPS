@@ -1,0 +1,20 @@
+#!/bin/bash
+
+FILE=$1
+
+stato=$2
+
+ts=(`jq -r '.transitions.'${stato}'[].input' ${FILE}`)
+
+echo -e "stato: ${stato}\n"
+
+acc=0
+for t in ${ts[@]}
+do
+	num=`echo $t | tr -cd '-' | wc -c`
+	p=$(( 2 ** $num ))
+	echo "$t -> $p"
+	acc=$(( $acc + $p ))
+done
+
+echo -e "\ntotale = $acc"
